@@ -1,0 +1,13 @@
+syntax = "proto3";
+package proto;
+
+option go_package = ".";
+
+message CoordinatorRequest {
+  string key = 1;
+  string value = 2;
+}
+
+message CoordinatorResponse {
+  bool status = 1;
+}

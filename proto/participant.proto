@@ -1,0 +1,28 @@
+syntax = "proto3";
+package proto;
+
+option go_package = ".";
+
+
+enum ParticipantRequestType {
+  PREPARE = 0;
+  COMMIT = 1;
+  PAUSE = 2;
+  UNPAUSE = 3;
+  READ = 4;
+  CONNECTED = 5;
+  DISCONNECTED = 6;
+}
+
+message ParticipantRequest {
+  ParticipantRequestType type = 1;
+  bool isAdmin = 2;
+  optional string key = 3;
+  optional string value = 4;
+}
+
+message ParticipantResponse {
+  ParticipantRequestType type = 1;
+  bool status = 2;
+  optional string value = 3;
+}

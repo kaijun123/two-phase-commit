@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net"
+	"two-phase-commit/utils"
 )
 
 func main() {
@@ -12,11 +13,12 @@ func main() {
 		fmt.Println("Error:", err)
 		return
 	}
-	// defer conn.Close()
+	defer conn.Close()
+
+	testRequest := utils.SerializeCoordinatorRequest("testKey", "testValue")
 
 	// Send data to the server
-	data := []byte("Hello, Server!")
-	_, err = conn.Write(data)
+	_, err = conn.Write(testRequest)
 	if err != nil {
 		fmt.Println("Error:", err)
 		return

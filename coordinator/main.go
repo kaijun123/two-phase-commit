@@ -1,7 +1,6 @@
 package main
 
 import (
-	"2PC/coordinator/participants"
 	"bufio"
 	"fmt"
 	"io"
@@ -9,12 +8,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"two-phase-commit/coordinator/participants"
+	"two-phase-commit/utils"
 )
 
 // // create map of who is alive and who isn't
 // var aliveMap map[string]bool
-
-// create map of state response
 
 var participantStateMap *participants.ParticipantStateMap
 
@@ -52,11 +51,9 @@ func main() {
 			}
 			log.Println("Message from client:", string(request[:n]))
 
-			// broadcast message to all participants
-			participantStateMap.Broadcast(request[:n])
+			coordinatorRequest := utils.DeserializeCoordinatorRequest(request[:n])
 
-			// listen to responses from participants
-			participantStateMap.Listen(participantStateMap.UpdateParticipantStatus)
+			participants.TwoPhaseCommit(conn, participantStateMap, coordinatorRequest)
 		}
 	}
 }
@@ -135,6 +132,6 @@ func handleParticipants(state *participants.ParticipantState) {
 		}
 		log.Println("Response from participant at", state.Ip, ":", string(response[:n]))
 
-		resChannel <- response
+		resChannel <- response[:n]
 	}
 }
