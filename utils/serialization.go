@@ -12,13 +12,8 @@ func SerializeParticipantRequest(t p.ParticipantRequestType, a bool, k string, v
 	participantRequest := p.ParticipantRequest{
 		Type:    t,
 		IsAdmin: a,
-	}
-
-	if k != "" {
-		participantRequest.Key = &k
-	}
-	if v != "" {
-		participantRequest.Value = &v
+		Key:     proto.String(k),
+		Value:   proto.String(v),
 	}
 
 	bytes, err := proto.Marshal(&participantRequest)
@@ -42,10 +37,7 @@ func SerializeParticipantResponse(t p.ParticipantRequestType, s bool, v string) 
 	participantResponse := p.ParticipantResponse{
 		Type:   t,
 		Status: s,
-	}
-
-	if v != "" {
-		participantResponse.Value = &v
+		Value:  proto.String(v),
 	}
 
 	bytes, err := proto.Marshal(&participantResponse)
