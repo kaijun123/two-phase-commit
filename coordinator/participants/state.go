@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
+	"time"
 	p "two-phase-commit/proto"
 	"two-phase-commit/utils"
 )
@@ -19,20 +21,22 @@ import (
 // )
 
 type ParticipantState struct {
-	// IsAlive bool
-	Ip         string
-	Status     p.ParticipantRequestType
-	ReqChannel chan []byte // buffered channel
-	ResChannel chan []byte // non-buffered channel
-	Conn       net.Conn
+	Conn                  net.Conn
+	Ip                    string
+	IsAlive               bool
+	Status                p.ParticipantRequestType
+	ReqChannel            chan []byte // buffered channel
+	ResChannel            chan []byte // non-buffered channel
+	PreviousHeartbeatTime time.Time
 }
 
 func (s ParticipantState) ToString() {
-	fmt.Printf("ip: %s, status: %s\n", s.Ip, s.Status.String())
+	fmt.Printf("ip: %v, isAlive: %v, status: %v\n", s.Ip, s.IsAlive, s.Status.String())
 }
 
 type ParticipantStateMap struct {
 	States map[string]ParticipantState
+	Mutex  sync.Mutex
 }
 
 func CreateParticipantStateMap() *ParticipantStateMap {
@@ -48,44 +52,59 @@ func (m *ParticipantStateMap) ToString() {
 }
 
 func (m *ParticipantStateMap) AddParticipant(ip string, conn net.Conn) (*ParticipantState, error) {
+	m.Mutex.Lock()
 	state := ParticipantState{
-		// IsAlive: isAlive,
-		Ip:         ip,
-		Status:     p.ParticipantRequestType_CONNECTED,
-		ReqChannel: make(chan []byte, 1), // buffered channel
-		ResChannel: make(chan []byte),    // non-buffered channel
-		Conn:       conn,
+		Conn:                  conn,
+		Ip:                    ip,
+		IsAlive:               false,
+		Status:                p.ParticipantRequestType_DISCONNECT,
+		ReqChannel:            make(chan []byte, 1), // buffered channel
+		ResChannel:            make(chan []byte),    // non-buffered channel
+		PreviousHeartbeatTime: time.Now(),
 	}
 
 	_, exists := m.States[ip]
 	if !exists {
 		m.States[ip] = state
+		m.Mutex.Unlock()
 		return &state, nil
 	}
+	m.Mutex.Unlock()
 	return nil, fmt.Errorf("participant already exists")
 }
 
-// func (p *ParticipantStateMap) UpdateParticipantState(ip string, isAlive bool) error {
-// 	if state, exists := p.States[ip]; exists {
-// 		state.IsAlive = isAlive
-// 		return nil
-// 	}
-// 	return fmt.Errorf("participant does not exist")
-// }
-
-// broadcasts message to all the participant goroutines
-func (m *ParticipantStateMap) Broadcast(message []byte) {
+// broadcasts message to participant goroutines
+// onlyAliveParticipants is used to set if we only want to broadcast to alive participants
+func (m *ParticipantStateMap) Broadcast(message []byte, onlyAliveParticipants bool) {
 	for _, state := range (*m).States {
+		if onlyAliveParticipants && !state.IsAlive {
+			continue
+		}
 		state.ReqChannel <- message
 	}
 }
 
 // listen to responses from the participants
-func (m *ParticipantStateMap) Listen(callback func(ip string, response []byte)) {
+// onlyAliveParticipants is used to set if we only want to listen from alive participants
+func (m *ParticipantStateMap) Listen(onlyAliveParticipants bool, callback func(ip string, response []byte)) {
 	for _, state := range (*m).States {
+		if onlyAliveParticipants && !state.IsAlive {
+			continue
+		}
 		response := <-state.ResChannel
 		callback(state.Ip, response)
 	}
+}
+
+func (m *ParticipantStateMap) BroadcastAndListen(message []byte, onlyAliveParticipants bool, callback func(ip string, response []byte)) {
+	m.Mutex.Lock()
+
+	// broadcast message to all participants
+	m.Broadcast(message, onlyAliveParticipants)
+	// listen to responses from participants
+	m.Listen(onlyAliveParticipants, callback)
+
+	m.Mutex.Unlock()
 }
 
 func (m *ParticipantStateMap) UpdateParticipantStatus(ip string, response []byte) {
@@ -95,11 +114,24 @@ func (m *ParticipantStateMap) UpdateParticipantStatus(ip string, response []byte
 		participantRes := utils.DeserializeParticipantResponse(response)
 		fmt.Println("participantRes:", participantRes.Type.String(), participantRes.GetStatus(), participantRes.GetValue())
 
-		if (*participantRes).Status {
-			state.Status = participantRes.Type
-			m.States[ip] = state
+		t := participantRes.GetType()
+		status := participantRes.GetStatus()
+		switch t {
+		case p.ParticipantRequestType_CONNECT:
+			if status {
+				state.IsAlive = true
+				state.PreviousHeartbeatTime = time.Now()
+				state.Status = t
+			}
+		case p.ParticipantRequestType_DISCONNECT: // occurs when the participant did not return a response and is assumed to be paused
+			if status {
+				state.IsAlive = false
+				state.Status = t
+			}
+		default:
+			state.Status = t
 		}
-
+		m.States[ip] = state
 	} else {
 		log.Fatal("participant not in the participantStateMap")
 	}

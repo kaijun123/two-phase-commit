@@ -10,8 +10,10 @@ enum ParticipantRequestType {
   PAUSE = 2;
   UNPAUSE = 3;
   READ = 4;
-  CONNECTED = 5;
-  DISCONNECTED = 6;
+  READALL = 5;
+  DELETE = 6;
+  CONNECT = 7;
+  DISCONNECT = 8;
 }
 
 message ParticipantRequest {

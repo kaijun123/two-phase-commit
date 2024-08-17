@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"time"
 	"two-phase-commit/coordinator/participants"
+	p "two-phase-commit/proto"
 	"two-phase-commit/utils"
 )
 
@@ -20,6 +22,12 @@ var participantStateMap *participants.ParticipantStateMap
 func main() {
 	participantStateMap = participants.CreateParticipantStateMap()
 	bootstrap()
+	// participantStateMap.ToString()
+
+	// // send first heartbeat
+	go participants.SendHearbeat(participantStateMap)
+	go participants.TrackHeartbeat(participantStateMap)
+	// participantStateMap.ToString()
 
 	// Listen for incoming connections
 	listener, err := net.Listen("tcp", "localhost:8080")
@@ -125,10 +133,12 @@ func handleParticipants(state *participants.ParticipantState) {
 
 		// read packets from participants
 		response := make([]byte, 1024)
+		conn.SetReadDeadline(time.Now().Add(utils.ReadDeadlineDuration * time.Second))
 		n, err = conn.Read(response)
 		if err != nil {
-			log.Fatal("Error2:", err)
-			return
+			fmt.Println("Error2:", err)
+			response = utils.SerializeParticipantResponse(p.ParticipantRequestType_DISCONNECT, true, "")
+			n = len(response)
 		}
 		log.Println("Response from participant at", state.Ip, ":", string(response[:n]))
 

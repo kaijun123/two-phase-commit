@@ -40,6 +40,8 @@ func SerializeParticipantResponse(t p.ParticipantRequestType, s bool, v string) 
 		Value:  proto.String(v),
 	}
 
+	// fmt.Println("participantResponse.Type:", participantResponse.Type, "participantResponse.Status:", participantResponse.Status)
+
 	bytes, err := proto.Marshal(&participantResponse)
 
 	if err != nil {

@@ -7,30 +7,33 @@ import (
 	"log"
 	"net"
 	"sync"
+	"time"
 	"two-phase-commit/participant/store"
 	p "two-phase-commit/proto"
 	"two-phase-commit/utils"
 )
 
-type participantStatus string
+type commitState string
 
 // TODO: use ParticipantRequestType instead for more consistency
 // TODO: should pause be one of the states?
 // TODO: do we need "committed"
 const (
-	Default  participantStatus = "default"
-	Prepared participantStatus = "prepared"
-	// Committed ParticipantStatus = "committed"
+	Default  commitState = "default"
+	Prepared commitState = "prepared"
+	// Committed commitState = "committed"
 )
 
 type participantState struct {
-	mutex         sync.Mutex // mutex to prevent race condition
-	coordinatorIp string
-	clientIp      string
-	isPause       bool
-	status        participantStatus
-	prepareKey    string
-	prepareValue  string
+	mutex                 sync.Mutex // mutex to prevent race condition
+	coordinatorIp         string
+	clientIp              string
+	isPause               bool
+	isStale               bool // occurs when the participant is partitioned from the coordinator
+	commitState           commitState
+	prepareKey            string
+	prepareValue          string
+	previousHeartbeatTime time.Time
 }
 
 var s *store.KVStore
@@ -41,6 +44,7 @@ func main() {
 	fmt.Println("coordinatorIp:", state.coordinatorIp)
 	fmt.Println("clientIp:", state.clientIp)
 
+	go trackHearbeat()
 	go listenTCP(state.clientIp, handler)
 	listenTCP(state.coordinatorIp, handler)
 }
@@ -64,23 +68,24 @@ func handler(ip string, conn net.Conn) {
 
 		// Deserialize the request
 		participantReq := utils.DeserializeParticipantRequest(request[:n])
-		log.Println("Request received by participant", ip, ":", participantReq.String())
+		fmt.Println("Request received by participant", ip, ":", participantReq.String())
 
 		var participantRes []byte
 		t := participantReq.GetType()
 		switch t {
 		case p.ParticipantRequestType_PREPARE:
-			if !state.isPause {
+			if !state.isPause && !state.isStale {
 				participantRes = utils.SerializeParticipantResponse(t, true, "")
-				state.status = Prepared
+				state.commitState = Prepared
 				state.prepareKey = participantReq.GetKey()
 				state.prepareValue = participantReq.GetValue()
 			}
 		case p.ParticipantRequestType_COMMIT:
-			if !state.isPause && state.status == Prepared && state.prepareKey == participantReq.GetKey() && state.prepareValue == participantReq.GetValue() {
+			// ensure that the prepare and commit messages are for the same key
+			if !state.isPause && !state.isStale && state.commitState == Prepared && state.prepareKey == participantReq.GetKey() && state.prepareValue == participantReq.GetValue() {
 				participantRes = utils.SerializeParticipantResponse(t, true, "")
 				s.Put(participantReq.GetKey(), participantReq.GetValue())
-				state.status = Default
+				state.commitState = Default
 			}
 		case p.ParticipantRequestType_PAUSE:
 			if participantReq.GetIsAdmin() {
@@ -90,20 +95,42 @@ func handler(ip string, conn net.Conn) {
 		case p.ParticipantRequestType_UNPAUSE:
 			if participantReq.GetIsAdmin() {
 				state.isPause = false
+				// TODO: revive sequence. Fetch all the key value pairs from the other participants
+				participantRes = utils.SerializeParticipantResponse(t, true, "")
 			}
 		case p.ParticipantRequestType_READ:
-			if !state.isPause {
+			if !state.isPause && !state.isStale {
 				value, err := s.Get(*participantReq.Key)
 				if err != nil {
-					log.Fatal("unable to get key-value pair from the store:", err.Error())
+					fmt.Println("unable to get key-value pair from the store:", err.Error())
+					participantRes = utils.SerializeParticipantResponse(t, false, "")
+				} else {
+					participantRes = utils.SerializeParticipantResponse(t, true, value)
 				}
-				participantRes = utils.SerializeParticipantResponse(t, true, value)
+			}
+		case p.ParticipantRequestType_DELETE:
+			if !state.isPause && participantReq.GetIsAdmin() {
+				err := s.Remove(*participantReq.Key)
+				if err != nil {
+					fmt.Println("unable to get key-value pair from the store:", err.Error())
+					participantRes = utils.SerializeParticipantResponse(t, false, "")
+				} else {
+					participantRes = utils.SerializeParticipantResponse(t, true, "")
+				}
+			}
+		case p.ParticipantRequestType_CONNECT: // used as heartbeat by the coordinator
+			if !state.isPause {
+				state.isStale = false
+				state.previousHeartbeatTime = time.Now().UTC()
+				participantRes = utils.SerializeParticipantResponse(t, true, "")
 			}
 		default:
 			participantRes = utils.SerializeParticipantResponse(t, false, "")
 		}
 
-		if len(participantRes) == 0 {
+		// Should not return a response when the participant is paused
+		// but should still return a failed response when the participant is stale
+		if !state.isPause && len(participantRes) == 0 {
 			participantRes = utils.SerializeParticipantResponse(t, false, "")
 		}
 
@@ -136,7 +163,8 @@ func bootstrap() {
 		coordinatorIp: coordinatorIp,
 		clientIp:      clientIp,
 		isPause:       false,
-		status:        Default,
+		isStale:       false,
+		commitState:   Default,
 		prepareKey:    "",
 		prepareValue:  "",
 	}
@@ -165,5 +193,15 @@ func listenTCP(ip string, callback func(ip string, conn net.Conn)) {
 		}
 
 		callback(ip, conn)
+	}
+}
+
+func trackHearbeat() {
+	for {
+		now := time.Now()
+		if now.Sub(state.previousHeartbeatTime).Seconds() > utils.HeartbeatThreshold {
+			state.isStale = true
+		}
+		time.Sleep(utils.HeartbeatFrequency * time.Second)
 	}
 }

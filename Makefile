@@ -6,3 +6,11 @@ protobuf:
 start-participant:
 	@echo "Starting participants"
 	bash startParticipant.sh
+
+start-client:
+	@echo "Starting client"
+	cd ./client && go run main.go
+
+start-coordinator:
+	@echo "Starting client"
+	cd ./coordinator && go run main.go

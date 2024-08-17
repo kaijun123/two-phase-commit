@@ -3,20 +3,14 @@ package participants
 import (
 	"log"
 	"net"
+	"time"
 	p "two-phase-commit/proto"
 	"two-phase-commit/utils"
 )
 
+// TODO: Add fault tolerance
 func TwoPhaseCommit(conn net.Conn, participantStateMap *ParticipantStateMap, req *p.CoordinatorRequest) {
-	// Prepare Phase
-	prepareReq := utils.SerializeParticipantRequest(p.ParticipantRequestType_PREPARE, false, (*req).Key, (*req).Value)
-
-	// broadcast message to all participants
-	participantStateMap.Broadcast(prepareReq)
-	// listen to responses from participants
-	participantStateMap.Listen(participantStateMap.UpdateParticipantStatus)
-
-	// participantStateMap.ToString()
+	PreparePhase(conn, participantStateMap, req)
 
 	// check if all the participants are ready
 	if !participantStateMap.CheckAllPrepared() {
@@ -24,14 +18,40 @@ func TwoPhaseCommit(conn net.Conn, participantStateMap *ParticipantStateMap, req
 		return
 	}
 
-	// Commit Phase
-	commitReq := utils.SerializeParticipantRequest(p.ParticipantRequestType_COMMIT, false, (*req).Key, (*req).Value)
+	CommitPhase(conn, participantStateMap, req)
+}
 
-	// broadcast message to all participants
-	participantStateMap.Broadcast(commitReq)
-	// listen to responses from participants
-	participantStateMap.ToString()
+func PreparePhase(conn net.Conn, participantStateMap *ParticipantStateMap, req *p.CoordinatorRequest) {
+	prepareReq := utils.SerializeParticipantRequest(p.ParticipantRequestType_PREPARE, false, (*req).Key, (*req).Value)
+	participantStateMap.BroadcastAndListen(prepareReq, true, participantStateMap.UpdateParticipantStatus)
+	// participantStateMap.ToString()
+}
 
-	// listen to responses from participants
-	participantStateMap.Listen(participantStateMap.UpdateParticipantStatus)
+func CommitPhase(conn net.Conn, participantStateMap *ParticipantStateMap, req *p.CoordinatorRequest) {
+	prepareReq := utils.SerializeParticipantRequest(p.ParticipantRequestType_COMMIT, false, (*req).Key, (*req).Value)
+	participantStateMap.BroadcastAndListen(prepareReq, true, participantStateMap.UpdateParticipantStatus)
+	// participantStateMap.ToString()
+}
+
+func SendHearbeat(participantStateMap *ParticipantStateMap) {
+	for {
+		prepareReq := utils.SerializeParticipantRequest(p.ParticipantRequestType_CONNECT, false, "", "")
+		participantStateMap.BroadcastAndListen(prepareReq, false, participantStateMap.UpdateParticipantStatus)
+		time.Sleep(utils.HeartbeatFrequency * time.Second)
+	}
+}
+
+func TrackHeartbeat(participantStateMap *ParticipantStateMap) {
+	for {
+		now := time.Now()
+		for ip, state := range participantStateMap.States {
+			if now.Sub(state.PreviousHeartbeatTime).Seconds() > utils.HeartbeatThreshold {
+				state.IsAlive = false
+				participantStateMap.States[ip] = state
+			}
+		}
+
+		participantStateMap.ToString()
+		time.Sleep(utils.HeartbeatFrequency * time.Second)
+	}
 }
