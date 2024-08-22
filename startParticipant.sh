@@ -5,7 +5,7 @@ cd "./participant"
 trap 'kill 0' SIGINT;
 for n in {8081..8085};
 do
-  echo $n
+  # echo $n
   go run ./main.go -port=$n &
 done
 wait;

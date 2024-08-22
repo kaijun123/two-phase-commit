@@ -1,19 +1,20 @@
 package main_test
 
 import (
-	"fmt"
 	"testing"
+
+	"two-phase-commit/utils"
+
+	p "two-phase-commit/proto"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	p "two-phase-commit/proto"
-	"two-phase-commit/utils"
 )
 
 const (
-	testKey   = "testKey"
-	testValue = "testValue"
+	testKey    = "testKey"
+	testValue  = "testValue"
+	testValue2 = "testValue2"
 )
 
 func TestClient(t *testing.T) {
@@ -22,95 +23,83 @@ func TestClient(t *testing.T) {
 }
 
 var _ = Describe("Basic participant functions", func() {
-	It("Basic pause & unpause by admin and non-admin", func() {
+	It("Partitioned Participant: Participant receives Prepare message, but not Commit", func() {
+		resp := utils.SendParticipantRequest("18081", p.MessageType_Prepare, false, testKey, testValue, true)
+		Expect(resp.GetType()).To(Equal(p.MessageType_Prepare))
+		Expect(resp.GetStatus()).To(Equal(true))
+
+		resp = utils.SendParticipantRequest("18081", p.MessageType_GetStatus, false, "", "", false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_GetStatus))
+		Expect(resp.GetStatus()).To(Equal(true))
+		Expect(resp.GetValue()).To(Equal("abort"))
 	})
 
-	It("Basic pause & unpause by admin and non-admin", func() {
-		By("Test pause by non-admin")
-		resp := utils.SendParticipantRequest("18081", p.ParticipantRequestType_PAUSE, false, "", "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_PAUSE))
-		Expect(resp.GetStatus()).To(Equal(false))
+	// It("Basic Prepare-Commit flow", func() {
+	// 	// Issue: with the current locking mechanism, what happens when the coord dies, and reboots and resends a global commit?
+	// 	// Or should the restart process for coord be from prepare. Then make sure that the participants resend the same votes?
+	// })
 
-		By("Test pause by admin")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_PAUSE, true, "", "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_PAUSE))
+	It("Successful Prepare-Commit flow", func() {
+		By("Test Prepare")
+		resp := utils.SendParticipantRequest("18081", p.MessageType_Prepare, false, testKey, testValue, false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_Prepare))
 		Expect(resp.GetStatus()).To(Equal(true))
 
-		By("Test unpause by non-admin")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_UNPAUSE, false, "", "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_UNPAUSE))
-		Expect(resp.GetStatus()).To(Equal(false))
+		// By("Test Prepare Status")
+		// resp = utils.SendParticipantRequest("18081", p.MessageType_GetStatus, false, "", "", false)
+		// fmt.Println(resp.GetType().String())
+		// Expect(resp.GetType()).To(Equal(p.MessageType_GetStatus))
+		// Expect(resp.GetStatus()).To(Equal(true))
+		// Expect(resp.GetValue()).To(Equal("ready"))
 
-		By("Test unpause by admin")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_UNPAUSE, true, "", "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_UNPAUSE))
-		Expect(resp.GetStatus()).To(Equal(true))
-	})
-
-	It("Basic participant flow", func() {
-		By("Test pause")
-		resp := utils.SendParticipantRequest("18081", p.ParticipantRequestType_PAUSE, true, "", "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_PAUSE))
+		By("Test Commit")
+		resp = utils.SendParticipantRequest("18081", p.MessageType_Commit, false, testKey, testValue, false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_Commit))
 		Expect(resp.GetStatus()).To(Equal(true))
 
-		By("Test Prepare after pause")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_PREPARE, false, testKey, testValue)
-		fmt.Println(resp.String())
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_PREPARE))
-		Expect(resp.GetStatus()).To(Equal(false))
-
-		By("Test Unpause after pause")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_UNPAUSE, true, "", "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_UNPAUSE))
+		By("Test Commit Status")
+		resp = utils.SendParticipantRequest("18081", p.MessageType_GetStatus, false, "", "", false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_GetStatus))
 		Expect(resp.GetStatus()).To(Equal(true))
-
-		By("Test Prepare after unpause")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_PREPARE, false, testKey, testValue)
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_PREPARE))
-		Expect(resp.GetStatus()).To(Equal(true))
-
-		By("Test Commit after unpause")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_COMMIT, false, testKey, testValue)
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_COMMIT))
-		Expect(resp.GetStatus()).To(Equal(true))
+		Expect(resp.GetValue()).To(Equal("commit"))
 
 		By("Test Read after commit")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_READ, false, testKey, "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_READ))
+		resp = utils.SendParticipantRequest("18081", p.MessageType_Read, false, testKey, "", false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_Read))
+		Expect(resp.GetStatus()).To(Equal(true))
 		Expect(resp.GetValue()).To(Equal(testValue))
+
+		By("Test Prepare")
+		resp = utils.SendParticipantRequest("18081", p.MessageType_Prepare, false, testKey, testValue2, false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_Prepare))
 		Expect(resp.GetStatus()).To(Equal(true))
 
-		By("Test Delete after commit")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_DELETE, true, testKey, "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_DELETE))
+		// By("Test Prepare Status")
+		// resp = utils.SendParticipantRequest("18081", p.MessageType_GetStatus, false, "", "", false)
+		// Expect(resp.GetType()).To(Equal(p.MessageType_GetStatus))
+		// Expect(resp.GetStatus()).To(Equal(true))
+		// Expect(resp.GetValue()).To(Equal("ready"))
+
+		By("Test Abort")
+		resp = utils.SendParticipantRequest("18081", p.MessageType_Abort, false, testKey, testValue2, false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_Abort))
 		Expect(resp.GetStatus()).To(Equal(true))
 
-		By("Test Read after commit")
-		resp = utils.SendParticipantRequest("18081", p.ParticipantRequestType_READ, false, testKey, "")
-		Expect(resp.GetType()).To(Equal(p.ParticipantRequestType_READ))
-		Expect(resp.GetStatus()).To(Equal(false))
+		By("Test Abort Status")
+		resp = utils.SendParticipantRequest("18081", p.MessageType_GetStatus, false, "", "", false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_GetStatus))
+		Expect(resp.GetStatus()).To(Equal(true))
+		Expect(resp.GetValue()).To(Equal("abort"))
+
+		By("Test Read after abort")
+		resp = utils.SendParticipantRequest("18081", p.MessageType_Read, false, testKey, "", false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_Read))
+		Expect(resp.GetStatus()).To(Equal(true))
+		Expect(resp.GetValue()).To(Equal(testValue))
+
+		By("Test Delete")
+		resp = utils.SendParticipantRequest("18081", p.MessageType_Delete, true, testKey, "", false)
+		Expect(resp.GetType()).To(Equal(p.MessageType_Delete))
+		Expect(resp.GetStatus()).To(Equal(true))
 	})
 })
-
-// func main() {
-
-// 	// Case 1: Test participant functionalities
-
-// 	sendRequest("18081", p.ParticipantRequestType_PAUSE, true, "", "")
-// 	sendRequest("8081", p.ParticipantRequestType_PREPARE, true, "testKey", "testValue")
-
-// 	// participantRes := utils.SerializeParticipantResponse(p.ParticipantRequestType_PREPARE, false, "")
-// 	// fmt.Println("length:", len(participantRes))
-
-// 	// participantResponse := p.ParticipantResponse{
-// 	// 	Type:   p.ParticipantRequestType_PREPARE,
-// 	// 	Status: false,
-// 	// 	Value:  proto.String(""),
-// 	// }
-
-// 	// bytes, err := proto.Marshal(&participantResponse)
-// 	// if err != nil {
-// 	// 	log.Fatal("unable to marshal ParticipantResponse:", err.Error())
-// 	// }
-// 	// fmt.Println("length:", len(bytes))
-// }

@@ -22,20 +22,20 @@ func TwoPhaseCommit(conn net.Conn, participantStateMap *ParticipantStateMap, req
 }
 
 func PreparePhase(conn net.Conn, participantStateMap *ParticipantStateMap, req *p.CoordinatorRequest) {
-	prepareReq := utils.SerializeParticipantRequest(p.ParticipantRequestType_PREPARE, false, (*req).Key, (*req).Value)
+	prepareReq := utils.SerializeParticipantRequest(p.MessageType_Prepare, false, (*req).Key, (*req).Value)
 	participantStateMap.BroadcastAndListen(prepareReq, true, participantStateMap.UpdateParticipantStatus)
 	// participantStateMap.ToString()
 }
 
 func CommitPhase(conn net.Conn, participantStateMap *ParticipantStateMap, req *p.CoordinatorRequest) {
-	prepareReq := utils.SerializeParticipantRequest(p.ParticipantRequestType_COMMIT, false, (*req).Key, (*req).Value)
+	prepareReq := utils.SerializeParticipantRequest(p.MessageType_Commit, false, (*req).Key, (*req).Value)
 	participantStateMap.BroadcastAndListen(prepareReq, true, participantStateMap.UpdateParticipantStatus)
 	// participantStateMap.ToString()
 }
 
 func SendHearbeat(participantStateMap *ParticipantStateMap) {
 	for {
-		prepareReq := utils.SerializeParticipantRequest(p.ParticipantRequestType_CONNECT, false, "", "")
+		prepareReq := utils.SerializeParticipantRequest(p.MessageType_Connect, false, "", "")
 		participantStateMap.BroadcastAndListen(prepareReq, false, participantStateMap.UpdateParticipantStatus)
 		time.Sleep(utils.HeartbeatFrequency * time.Second)
 	}

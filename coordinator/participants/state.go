@@ -24,7 +24,7 @@ type ParticipantState struct {
 	Conn                  net.Conn
 	Ip                    string
 	IsAlive               bool
-	Status                p.ParticipantRequestType
+	Status                p.MessageType
 	ReqChannel            chan []byte // buffered channel
 	ResChannel            chan []byte // non-buffered channel
 	PreviousHeartbeatTime time.Time
@@ -57,7 +57,7 @@ func (m *ParticipantStateMap) AddParticipant(ip string, conn net.Conn) (*Partici
 		Conn:                  conn,
 		Ip:                    ip,
 		IsAlive:               false,
-		Status:                p.ParticipantRequestType_DISCONNECT,
+		Status:                p.MessageType_Disconnect,
 		ReqChannel:            make(chan []byte, 1), // buffered channel
 		ResChannel:            make(chan []byte),    // non-buffered channel
 		PreviousHeartbeatTime: time.Now(),
@@ -117,13 +117,13 @@ func (m *ParticipantStateMap) UpdateParticipantStatus(ip string, response []byte
 		t := participantRes.GetType()
 		status := participantRes.GetStatus()
 		switch t {
-		case p.ParticipantRequestType_CONNECT:
+		case p.MessageType_Connect:
 			if status {
 				state.IsAlive = true
 				state.PreviousHeartbeatTime = time.Now()
 				state.Status = t
 			}
-		case p.ParticipantRequestType_DISCONNECT: // occurs when the participant did not return a response and is assumed to be paused
+		case p.MessageType_Disconnect: // occurs when the participant did not return a response and is assumed to be paused
 			if status {
 				state.IsAlive = false
 				state.Status = t
@@ -139,7 +139,7 @@ func (m *ParticipantStateMap) UpdateParticipantStatus(ip string, response []byte
 
 func (m *ParticipantStateMap) CheckAllPrepared() bool {
 	for _, state := range m.States {
-		if state.Status != p.ParticipantRequestType_PREPARE {
+		if state.Status != p.MessageType_Prepare {
 			return false
 		}
 	}

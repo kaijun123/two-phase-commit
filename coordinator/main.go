@@ -1,21 +1,15 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"os"
-	"path/filepath"
 	"time"
 	"two-phase-commit/coordinator/participants"
 	p "two-phase-commit/proto"
 	"two-phase-commit/utils"
 )
-
-// // create map of who is alive and who isn't
-// var aliveMap map[string]bool
 
 var participantStateMap *participants.ParticipantStateMap
 
@@ -67,31 +61,8 @@ func main() {
 }
 
 func bootstrap() {
-	ipArray := []string{}
-
-	// obtain the relative path to the participants file
-	relativePath, _ := filepath.Abs("../participants.txt")
-	// fmt.Println("relativePath:", relativePath)
-
-	file, err := os.Open(relativePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Close the file
-	defer file.Close()
-
-	// read the file line by line using a scanner
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		ip := scanner.Text()
-		fmt.Println(ip)
-		ipArray = append(ipArray, ip)
-	}
-	// check for the error that occurred during the scanning
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
+	ipArray := utils.ReadConfigFile("../participants.txt", false)
+	fmt.Println("ipArray:", ipArray)
 
 	for _, ip := range ipArray {
 		// Connect to the participants
@@ -137,7 +108,7 @@ func handleParticipants(state *participants.ParticipantState) {
 		n, err = conn.Read(response)
 		if err != nil {
 			fmt.Println("Error2:", err)
-			response = utils.SerializeParticipantResponse(p.ParticipantRequestType_DISCONNECT, true, "")
+			response = utils.SerializeParticipantResponse(p.MessageType_Disconnect, true, "")
 			n = len(response)
 		}
 		log.Println("Response from participant at", state.Ip, ":", string(response[:n]))

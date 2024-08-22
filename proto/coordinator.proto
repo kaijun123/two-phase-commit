@@ -3,9 +3,16 @@ package proto;
 
 option go_package = ".";
 
+enum CoordinatorRequestType {
+  Normal = 0;
+  FailMidPreparePhase = 1;
+  FailMidCommitPhase = 2;
+}
+
 message CoordinatorRequest {
-  string key = 1;
-  string value = 2;
+  CoordinatorRequestType type = 1;
+  string key = 2;
+  string value = 3;
 }
 
 message CoordinatorResponse {

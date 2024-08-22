@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"time"
 	p "two-phase-commit/proto"
 )
 
-func SendParticipantRequest(port string, reqType p.ParticipantRequestType, isAdmin bool, key string, value string) *p.ParticipantResponse {
+func SendParticipantRequest(port string, reqType p.MessageType, isAdmin bool, key string, value string, isLongLasting bool) *p.ParticipantResponse {
 	conn := connect(port)
 	defer conn.Close() // Ensure the connection is closed properly
 
@@ -27,6 +28,10 @@ func SendParticipantRequest(port string, reqType p.ParticipantRequestType, isAdm
 		}
 		fmt.Println("Error:", err)
 		return nil
+	}
+
+	if isLongLasting {
+		time.Sleep(time.Duration(LongLastingConnectionDuration * math.Pow(10, 9)))
 	}
 
 	fmt.Println(DeserializeParticipantResponse(response[:n]).String())

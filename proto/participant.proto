@@ -4,27 +4,33 @@ package proto;
 option go_package = ".";
 
 
-enum ParticipantRequestType {
-  PREPARE = 0;
-  COMMIT = 1;
-  PAUSE = 2;
-  UNPAUSE = 3;
-  READ = 4;
-  READALL = 5;
-  DELETE = 6;
-  CONNECT = 7;
-  DISCONNECT = 8;
+enum MessageType {
+  Prepare = 0;
+  Commit = 1;
+  Pause = 2;
+  Unpause = 3;
+  Read = 4;
+  ReadAll = 5;
+  Delete = 6;
+  Connect = 7;
+  Disconnect = 8;
+  Abort = 9;
+  GetPid = 10;
+  GetStatus = 11;
+  P2P = 12;
 }
 
 message ParticipantRequest {
-  ParticipantRequestType type = 1;
+  MessageType type = 1;
   bool isAdmin = 2;
   optional string key = 3;
   optional string value = 4;
 }
 
 message ParticipantResponse {
-  ParticipantRequestType type = 1;
+  MessageType type = 1;
   bool status = 2;
-  optional string value = 3;
+  optional string action = 3;
+  optional string key = 4;
+  optional string value = 5;
 }

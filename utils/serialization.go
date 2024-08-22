@@ -8,7 +8,7 @@ import (
 	p "two-phase-commit/proto"
 )
 
-func SerializeParticipantRequest(t p.ParticipantRequestType, a bool, k string, v string) []byte {
+func SerializeParticipantRequest(t p.MessageType, a bool, k string, v string) []byte {
 	participantRequest := p.ParticipantRequest{
 		Type:    t,
 		IsAdmin: a,
@@ -33,10 +33,12 @@ func DeserializeParticipantRequest(bytes []byte) *p.ParticipantRequest {
 	return &participantRequest
 }
 
-func SerializeParticipantResponse(t p.ParticipantRequestType, s bool, v string) []byte {
+func SerializeParticipantResponse(t p.MessageType, s bool, a string, k string, v string) []byte {
 	participantResponse := p.ParticipantResponse{
 		Type:   t,
 		Status: s,
+		Action: proto.String(a),
+		Key:    proto.String(k),
 		Value:  proto.String(v),
 	}
 
